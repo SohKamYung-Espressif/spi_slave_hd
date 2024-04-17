@@ -8,6 +8,24 @@ Example](https://github.com/espressif/esp-idf/tree/master/examples/peripherals/s
 This is intended to be a reference for implementing transfers using
 QSPI.
 
+## GPIO Configuration
+
+### For SPI
+
+For SPI, the following values should be set in `spi_bus_config_t`:
+- `sclk_io_num` (SCLK)
+- `mosi_io_num` (MOSI)
+- `miso_io_num` (MISO)
+
+### For QSPI
+
+For QSPI, the following values should be set in `spi_bus_config_t`:
+- `sclk_io_num` (SCLK)
+- `data0_io_num` (DAT0)
+- `data1_io_num` (DAT1)
+- `data2_io_num` (DAT2)
+- `data3_io_num` (DAT3)
+
 ## References
 
 - [ESP SPI Slave HD (Half Duplex) Mode
