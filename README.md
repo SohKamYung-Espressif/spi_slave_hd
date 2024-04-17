@@ -7,3 +7,13 @@ Example](https://github.com/espressif/esp-idf/tree/master/examples/peripherals/s
 
 This is intended to be a reference for implementing transfers using
 QSPI.
+
+## References
+
+- [ESP SPI Slave HD (Half Duplex) Mode
+  Protocol](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_spi_slave_protocol.html)
+- [ESP-IDF Issue
+  (Closed)](https://github.com/espressif/esp-idf/issues/9823) about
+  using the example in QSPI mode
+- [ESP-IDF SPI Slave Driver
+  Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/spi_slave.html)
