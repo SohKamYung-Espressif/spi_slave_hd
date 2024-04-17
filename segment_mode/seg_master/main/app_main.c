@@ -220,6 +220,9 @@ void app_main(void)
     uint32_t num_has_sent = 0;     //Counter of the buffer number that Master has sent.
     uint32_t tx_trans_id = 0;
     srand(30);
+
+    int num_loops = 50; // limit the number of times we do the transfer
+
     while (1) {
         //RECV
         ESP_LOGI(TAG, "RECEIVING......");
@@ -277,6 +280,10 @@ void app_main(void)
             num_has_sent++;
             tx_trans_id++;
         }
+
+        num_loops--;
+        if (num_loops < 1)
+            break;
     }
 
     free(recv_buf);
