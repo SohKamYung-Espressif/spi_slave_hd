@@ -39,7 +39,7 @@ Based on the structure of `spi_bus_config_t` found in
 ### QSPI GPIOs for MCUs
 
 | Signal | ESP32-S3 (SPI2) | ESP32-C6 (SPI2) |
-| :----- | --------------: | :-------------: |
+| :----- | :-------------: | :-------------: |
 | CS     |              10 |              10 |
 | CLK    |              12 |               6 |
 | DAT0   |              11 |               7 |
@@ -55,4 +55,4 @@ Based on the structure of `spi_bus_config_t` found in
   (Closed)](https://github.com/espressif/esp-idf/issues/9823) about
   using the example in QSPI mode
 - [ESP-IDF Issue (Closed)](https://github.com/espressif/esp-idf/issues/12187) about using QPI mode
-- [SPI Slave Half Duplex](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/spi_slave_hd.html)
+- [SPI Slave Half Duplex](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/spi_slave_hd.html) documentation and API
