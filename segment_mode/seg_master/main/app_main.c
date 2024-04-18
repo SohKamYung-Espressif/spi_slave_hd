@@ -14,11 +14,34 @@
 #include "driver/spi_master.h"
 #include "esp_serial_slave_link/essl_spi.h"
 
+#define USE_QSPI (1)
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////// Please update the following configuration according to your Hardware spec /////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if USE_QSPI
+// lines used: cmd = 4, addr = 4, dummy = 1, data = 4
+// #define SPI_TX_RX_FLAGS (SPI_TRANS_MODE_QIO | SPI_TRANS_MULTILINE_CMD | SPI_TRANS_MULTILINE_ADDR)
+
+// lines used: cmd = 1, addr = 4, dummy = 1, data = 4
+#define SPI_TX_RX_FLAGS (SPI_TRANS_MODE_QIO | SPI_TRANS_MULTILINE_ADDR)
+
+// lines used: cmd = 1, addr = 4, dummy = 1, data = 1
+// #define SPI_TX_RX_FLAGS (SPI_TRANS_MODE_QIO)
+#else
+#define SPI_TX_RX_FLAGS 0
+#endif
+
+#if USE_QSPI
+#define GPIO_DAT0 11
+#define GPIO_DAT1 13
+#define GPIO_DAT2 14
+#define GPIO_DAT3 9
+#else
 #define GPIO_MOSI    11
 #define GPIO_MISO    13
+#endif
+
 #define GPIO_SCLK    12
 #define GPIO_CS      10
 
@@ -52,21 +75,33 @@ static const char TAG[] = "SEG_MASTER";
 static void get_spi_bus_default_config(spi_bus_config_t *bus_cfg)
 {
     memset(bus_cfg, 0x0, sizeof(spi_bus_config_t));
+#if USE_QSPI
+    bus_cfg->data0_io_num = GPIO_DAT0;
+    bus_cfg->data1_io_num = GPIO_DAT1;
+    bus_cfg->data2_io_num = GPIO_DAT2;
+    bus_cfg->data3_io_num = GPIO_DAT3;
+#else
     bus_cfg->mosi_io_num = GPIO_MOSI;
     bus_cfg->miso_io_num = GPIO_MISO;
-    bus_cfg->sclk_io_num = GPIO_SCLK;
     bus_cfg->quadwp_io_num = -1;
     bus_cfg->quadhd_io_num = -1;
+#endif
+    bus_cfg->sclk_io_num = GPIO_SCLK;
     bus_cfg->max_transfer_sz = 14000;
+#if USE_QSPI
+    bus_cfg->flags = (SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_QUAD);
+#else
     bus_cfg->flags = 0;
+#endif
     bus_cfg->intr_flags = 0;
 }
 
 static void get_spi_device_default_config(spi_device_interface_config_t *dev_cfg)
 {
     memset(dev_cfg, 0x0, sizeof(spi_device_interface_config_t));
-    dev_cfg->clock_speed_hz = 10 * 1000 * 1000;
-    dev_cfg->mode = 0;
+    // dev_cfg->clock_speed_hz = 10 * 1000 * 1000;
+    dev_cfg->clock_speed_hz = 250 * 1000;
+    dev_cfg->mode = 3;
     dev_cfg->spics_io_num = GPIO_CS;
     dev_cfg->cs_ena_pretrans = 0;
     dev_cfg->cs_ena_posttrans = 0;
@@ -104,7 +139,7 @@ static esp_err_t wait_for_slave_ready(spi_device_handle_t spi)
     while (1) {
         //Master sends CMD2 to get slave configuration
         //The first byte is a flag assigned by slave as a start signal, here it's 0xee
-        ret = essl_spi_rdbuf(spi, (uint8_t *)&slave_ready_flag, SLAVE_READY_FLAG_REG, 4, 0);
+        ret = essl_spi_rdbuf(spi, (uint8_t *)&slave_ready_flag, SLAVE_READY_FLAG_REG, 4, SPI_TX_RX_FLAGS);
         if (ret != ESP_OK) {
             return ret;
         }
@@ -123,11 +158,11 @@ static esp_err_t get_slave_max_buf_size(spi_device_handle_t spi, uint32_t *out_s
 {
     esp_err_t ret;
 
-    ret = essl_spi_rdbuf(spi, (uint8_t *)out_send_size, SLAVE_MAX_TX_BUF_LEN_REG, 4, 0);
+    ret = essl_spi_rdbuf(spi, (uint8_t *)out_send_size, SLAVE_MAX_TX_BUF_LEN_REG, 4, SPI_TX_RX_FLAGS);
     if (ret != ESP_OK) {
         return ret;
     }
-    ret = essl_spi_rdbuf(spi, (uint8_t *)out_recv_size, SLAVE_MAX_RX_BUF_LEN_REG, 4, 0);
+    ret = essl_spi_rdbuf(spi, (uint8_t *)out_recv_size, SLAVE_MAX_RX_BUF_LEN_REG, 4, SPI_TX_RX_FLAGS);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -144,14 +179,14 @@ static uint32_t get_slave_tx_buf_size(spi_device_handle_t spi)
     uint32_t updated_size;
     uint32_t temp;
 
-    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_READY_BUF_SIZE_REG, 4, 0));
+    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
     /**
      * Read until the last 2 reading result are same. Reason:
      * SPI transaction is carried on per 1 Byte. So when Master is reading the shared register, if the
      * value is changed by Slave at this time, Master may get wrong data.
      */
     while (1) {
-        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_READY_BUF_SIZE_REG, 4, 0));
+        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
         if (updated_size == temp) {
             return updated_size;
         }
@@ -168,15 +203,16 @@ static uint32_t get_slave_rx_buf_num(spi_device_handle_t spi)
     uint32_t updated_num;
     uint32_t temp;
 
-    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_RX_READY_BUF_NUM_REG, 4, 0));
+    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
     /**
      * Read until the last 2 reading result are same. Reason:
      * SPI transaction is carried on per 1 Byte. So when Master is reading the shared register, if the
      * value is changed by Slave at this time, Master may get wrong data.
      */
     while (1) {
-        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_num, SLAVE_RX_READY_BUF_NUM_REG, 4, 0));
+        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_num, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
         if (updated_num == temp) {
+            ESP_LOGW(TAG, "updated_num: %ld", updated_num);
             return updated_num;
         }
         temp = updated_num;
@@ -190,6 +226,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(wait_for_slave_ready(spi));
 
+    // return; // sky test
+
     /**
      * Here we let the Slave to claim its transaction size. You can modify it in your own way,
      * e.g. let the Senders to claim its MAX length, or let the Master/Slave determine the length themselves, without considering
@@ -202,6 +240,8 @@ void app_main(void)
     printf("\n\n---------SLAVE INFO---------\n\n");
     printf("Slave MAX Send Buffer Size:       %"PRIu32"\n", slave_max_tx_buf_size);
     printf("Slave MAX Receive Buffer Size:    %"PRIu32"\n", slave_max_rx_buf_size);
+
+    // return; // sky test
 
     uint8_t *recv_buf = heap_caps_calloc(1, rx_buf_size, MALLOC_CAP_DMA);
     if (!recv_buf) {
@@ -254,11 +294,11 @@ void app_main(void)
         }
 
         if (size_to_read) {
-            ESP_ERROR_CHECK(essl_spi_rddma(spi, recv_buf, size_to_read, -1, 0));
+            ESP_ERROR_CHECK(essl_spi_rddma(spi, recv_buf, size_to_read, -1, SPI_TX_RX_FLAGS));
             size_has_read += size_can_be_read;  //See NOTE above
 
             //Process the data. Here we just print it out.
-            printf("%s\n", recv_buf);
+            printf("%ld, %s\n", size_to_read, recv_buf);
             memset(recv_buf, 0x0, rx_buf_size);
         }
 
@@ -268,17 +308,20 @@ void app_main(void)
          * Similar logic, see the comment for `size_can_be_read` above.
          * If this is 0, it means Slave didn't load RX buffer to the bus yet.
          */
-        uint32_t num_to_send = get_slave_rx_buf_num(spi) - num_has_sent;
+        uint32_t rx_buf_num = get_slave_rx_buf_num(spi);
+        if (rx_buf_num) {
+            uint32_t num_to_send = rx_buf_num - num_has_sent;
+            ESP_LOGW(TAG, "num_to_send %ld", num_to_send);
+            //Prepare your TX transaction in your own way. Here is an example.
+            //You can set any size to send (shorter, longer or equal to the Slave Max RX buf size), Slave can get the actual length by ``trans_len`` member of ``spi_slave_hd_data_t``
+            uint32_t actual_tx_size = (rand() % (slave_max_rx_buf_size - TX_SIZE_MIN + 1)) + TX_SIZE_MIN;
+            snprintf((char *)send_buf, slave_max_rx_buf_size, "this is master's transaction %"PRIu32, tx_trans_id);
 
-        //Prepare your TX transaction in your own way. Here is an example.
-        //You can set any size to send (shorter, longer or equal to the Slave Max RX buf size), Slave can get the actual length by ``trans_len`` member of ``spi_slave_hd_data_t``
-        uint32_t actual_tx_size = (rand() % (slave_max_rx_buf_size - TX_SIZE_MIN + 1)) + TX_SIZE_MIN;
-        snprintf((char *)send_buf, slave_max_rx_buf_size, "this is master's transaction %"PRIu32, tx_trans_id);
-
-        for (int i = 0; i < num_to_send; i++) {
-            ESP_ERROR_CHECK(essl_spi_wrdma(spi, send_buf, actual_tx_size, -1, 0));
-            num_has_sent++;
-            tx_trans_id++;
+            for (int i = 0; i < num_to_send; i++) {
+                ESP_ERROR_CHECK(essl_spi_wrdma(spi, send_buf, actual_tx_size, -1, SPI_TX_RX_FLAGS));
+                num_has_sent++;
+                tx_trans_id++;
+            }
         }
 
         num_loops--;

@@ -13,13 +13,25 @@
 #include "freertos/task.h"
 #include "driver/spi_slave_hd.h"
 
+#include "hal/spi_ll.h"
+
 #define TIME_IS_OUT(start, end, timeout)     (timeout) > ((end)-(start)) ? 0 : 1
+
+#define USE_QSPI (1)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////// Please update the following configuration according to your Hardware spec /////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if USE_QSPI
+#define GPIO_DAT0 7
+#define GPIO_DAT1 2
+#define GPIO_DAT2 5
+#define GPIO_DAT3 4
+#else
 #define GPIO_MOSI 7
 #define GPIO_MISO 2
+#endif
+
 #define GPIO_SCLK 6
 #define GPIO_CS   10
 
@@ -101,13 +113,24 @@ static bool cb_set_rx_ready_buf_num(void *arg, spi_slave_hd_event_t *event, Base
 static void get_spi_bus_default_config(spi_bus_config_t *bus_cfg)
 {
     memset(bus_cfg, 0x0, sizeof(spi_bus_config_t));
+#if USE_QSPI
+    bus_cfg->data0_io_num = GPIO_DAT0;
+    bus_cfg->data1_io_num = GPIO_DAT1;
+    bus_cfg->data2_io_num = GPIO_DAT2;
+    bus_cfg->data3_io_num = GPIO_DAT3;
+#else
     bus_cfg->mosi_io_num = GPIO_MOSI;
     bus_cfg->miso_io_num = GPIO_MISO;
-    bus_cfg->sclk_io_num = GPIO_SCLK;
     bus_cfg->quadwp_io_num = -1;
     bus_cfg->quadhd_io_num = -1;
+#endif
+    bus_cfg->sclk_io_num = GPIO_SCLK;
     bus_cfg->max_transfer_sz = 14000;
+#if USE_QSPI
+    bus_cfg->flags = SPICOMMON_BUSFLAG_QUAD;
+#else
     bus_cfg->flags = 0;
+#endif
     bus_cfg->intr_flags = 0;
 }
 
@@ -116,7 +139,7 @@ static void get_spi_slot_default_config(spi_slave_hd_slot_config_t *slave_hd_cfg
     memset(slave_hd_cfg, 0x0, sizeof(spi_slave_hd_slot_config_t));
     slave_hd_cfg->spics_io_num = GPIO_CS;
     slave_hd_cfg->flags = 0;
-    slave_hd_cfg->mode = 0;
+    slave_hd_cfg->mode = 3;
     slave_hd_cfg->command_bits = 8;
     slave_hd_cfg->address_bits = 8;
     slave_hd_cfg->dummy_bits = 8;
@@ -137,6 +160,16 @@ static void init_slave_hd(void)
     get_spi_slot_default_config(&slave_hd_cfg);
 
     ESP_ERROR_CHECK(spi_slave_hd_init(SLAVE_HOST, &bus_cfg, &slave_hd_cfg));
+
+#if 0 && USE_QSPI
+    // switch to qpi mode
+    spi_dev_t *dev = SPI_LL_GET_HW(1);
+    if (!dev) {
+        printf("*ERROR* failed to get SPI dev\n");
+        return;
+    }
+    dev->user.qpi_mode = 1;
+#endif
 }
 
 //Example code for data to send. Use your own code for TX data here.
@@ -277,6 +310,7 @@ void receiver(void *arg)
         //Start new transaction
         ESP_ERROR_CHECK(spi_slave_hd_queue_trans(SLAVE_HOST, SPI_SLAVE_CHAN_RX, &slave_trans[descriptor_id], portMAX_DELAY));
         descriptor_id = (descriptor_id + 1) % QUEUE_SIZE;   //descriptor_id will be: 0, 1, 2, ..., QUEUE_SIZE, 0, 1, ....
+        ESP_LOGW(TAG, "descriptor_id %ld", descriptor_id);
     }
 }
 
