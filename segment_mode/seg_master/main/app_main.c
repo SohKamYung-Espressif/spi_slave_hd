@@ -70,6 +70,12 @@
 //Value in these 4 registers indicates number of the RX buffer that Slave has loaded to the DMA
 #define SLAVE_RX_READY_BUF_NUM_REG      16
 
+/* For testing: Value in these 4 registers indicates initial number of
+ * the RX buffer that Slave is starting with, for tx overflow
+ * calculation verification
+ */
+#define SLAVE_TX_INIT_BUF_SIZE_REG      20
+
 static const char TAG[] = "SEG_MASTER";
 
 static void get_spi_bus_default_config(spi_bus_config_t *bus_cfg)
@@ -99,8 +105,7 @@ static void get_spi_bus_default_config(spi_bus_config_t *bus_cfg)
 static void get_spi_device_default_config(spi_device_interface_config_t *dev_cfg)
 {
     memset(dev_cfg, 0x0, sizeof(spi_device_interface_config_t));
-    // dev_cfg->clock_speed_hz = 10 * 1000 * 1000;
-    dev_cfg->clock_speed_hz = 250 * 1000;
+    dev_cfg->clock_speed_hz = 10 * 1000 * 1000;
     dev_cfg->mode = 3;
     dev_cfg->spics_io_num = GPIO_CS;
     dev_cfg->cs_ena_pretrans = 0;
@@ -170,6 +175,30 @@ static esp_err_t get_slave_max_buf_size(spi_device_handle_t spi, uint32_t *out_s
     return ret;
 }
 
+static uint32_t get_slave_init_tx_buf_size(spi_device_handle_t spi)
+{
+    uint32_t updated_size;
+    uint32_t temp;
+
+    /* Possible bug: read using one data line. Otherwise corrupted data is returned
+     * occasionally */
+    // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_INIT_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_INIT_BUF_SIZE_REG, 4, 0));
+    /**
+     * Read until the last 2 reading result are same. Reason:
+     * SPI transaction is carried on per 1 Byte. So when Master is reading the shared register, if the
+     * value is changed by Slave at this time, Master may get wrong data.
+     */
+    while (1) {
+        // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_INIT_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_INIT_BUF_SIZE_REG, 4, 0));
+        if (updated_size == temp) {
+            return updated_size;
+        }
+        temp = updated_size;
+    }
+}
+
 /**
  * To get the size of the ready Slave TX buffer
  * This size can be read from the pre-negotiated shared register (here `SLAVE_TX_READY_BUF_SIZE_REG`)
@@ -179,14 +208,18 @@ static uint32_t get_slave_tx_buf_size(spi_device_handle_t spi)
     uint32_t updated_size;
     uint32_t temp;
 
-    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+    /* Possible bug: read using one data line. Otherwise corrupted data is returned
+     * occasionally */
+    // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_TX_READY_BUF_SIZE_REG, 4, 0));
     /**
      * Read until the last 2 reading result are same. Reason:
      * SPI transaction is carried on per 1 Byte. So when Master is reading the shared register, if the
      * value is changed by Slave at this time, Master may get wrong data.
      */
     while (1) {
-        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+        // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_READY_BUF_SIZE_REG, 4, SPI_TX_RX_FLAGS));
+        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_size, SLAVE_TX_READY_BUF_SIZE_REG, 4, 0));
         if (updated_size == temp) {
             return updated_size;
         }
@@ -203,16 +236,19 @@ static uint32_t get_slave_rx_buf_num(spi_device_handle_t spi)
     uint32_t updated_num;
     uint32_t temp;
 
-    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
+    /* Possible bug: read using one data line. Otherwise data is returned as 0
+     * all the time after reaching 15 */
+    // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
+    ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&temp, SLAVE_RX_READY_BUF_NUM_REG, 4, 0));
     /**
      * Read until the last 2 reading result are same. Reason:
      * SPI transaction is carried on per 1 Byte. So when Master is reading the shared register, if the
      * value is changed by Slave at this time, Master may get wrong data.
      */
     while (1) {
-        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_num, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
+        // ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_num, SLAVE_RX_READY_BUF_NUM_REG, 4, SPI_TX_RX_FLAGS));
+        ESP_ERROR_CHECK(essl_spi_rdbuf_polling(spi, (uint8_t *)&updated_num, SLAVE_RX_READY_BUF_NUM_REG, 4, 0));
         if (updated_num == temp) {
-            ESP_LOGW(TAG, "updated_num: %ld", updated_num);
             return updated_num;
         }
         temp = updated_num;
@@ -226,8 +262,6 @@ void app_main(void)
 
     ESP_ERROR_CHECK(wait_for_slave_ready(spi));
 
-    // return; // sky test
-
     /**
      * Here we let the Slave to claim its transaction size. You can modify it in your own way,
      * e.g. let the Senders to claim its MAX length, or let the Master/Slave determine the length themselves, without considering
@@ -240,8 +274,6 @@ void app_main(void)
     printf("\n\n---------SLAVE INFO---------\n\n");
     printf("Slave MAX Send Buffer Size:       %"PRIu32"\n", slave_max_tx_buf_size);
     printf("Slave MAX Receive Buffer Size:    %"PRIu32"\n", slave_max_rx_buf_size);
-
-    // return; // sky test
 
     uint8_t *recv_buf = heap_caps_calloc(1, rx_buf_size, MALLOC_CAP_DMA);
     if (!recv_buf) {
@@ -261,7 +293,11 @@ void app_main(void)
     uint32_t tx_trans_id = 0;
     srand(30);
 
-    int num_loops = 50; // limit the number of times we do the transfer
+    int num_loops = 100; // limit the number of times we do the transfer
+
+    // initialize the size_has_read with the current value from the slave
+    size_has_read = get_slave_init_tx_buf_size(spi);
+    ESP_LOGI(TAG, "starting value for size_has_read: %08lx", size_has_read);
 
     while (1) {
         //RECV
@@ -278,10 +314,19 @@ void app_main(void)
          *
          * If this is 0, it means Slave didn't load new TX buffer to the bus yet.
          */
-        uint32_t size_can_be_read = get_slave_tx_buf_size(spi) - size_has_read;
+        uint32_t tx_buf_size = get_slave_tx_buf_size(spi);
+        // uint32_t size_can_be_read = get_slave_tx_buf_size(spi) - size_has_read;
+        uint32_t size_can_be_read = tx_buf_size - size_has_read;
+
+        if (tx_buf_size < size_has_read) {
+            ESP_LOGI(TAG, "tx_buf_size wraparound");
+            vTaskDelay(pdMS_TO_TICKS(1000)); // pause so we can see the message
+        }
 
         if (size_can_be_read > rx_buf_size) {
             ESP_LOGW(TAG, "Slave is going to send buffer(%"PRIu32" Bytes) larger than pre-negotiated MAX size", size_can_be_read);
+            ESP_LOGW(TAG, "tx_buf_size: %08lx, size_has_read: %08lx", tx_buf_size, size_has_read);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // pause so we can see the warning
             /**
              * NOTE:
              * In this condition, Master should still increase its counter (``size_has_read``) by the size that Slave has loaded,
@@ -298,7 +343,7 @@ void app_main(void)
             size_has_read += size_can_be_read;  //See NOTE above
 
             //Process the data. Here we just print it out.
-            printf("%ld, %s\n", size_to_read, recv_buf);
+            printf("%08lx, %ld: %s\n", tx_buf_size, size_to_read, recv_buf);
             memset(recv_buf, 0x0, rx_buf_size);
         }
 
@@ -311,7 +356,6 @@ void app_main(void)
         uint32_t rx_buf_num = get_slave_rx_buf_num(spi);
         if (rx_buf_num) {
             uint32_t num_to_send = rx_buf_num - num_has_sent;
-            ESP_LOGW(TAG, "num_to_send %ld", num_to_send);
             //Prepare your TX transaction in your own way. Here is an example.
             //You can set any size to send (shorter, longer or equal to the Slave Max RX buf size), Slave can get the actual length by ``trans_len`` member of ``spi_slave_hd_data_t``
             uint32_t actual_tx_size = (rand() % (slave_max_rx_buf_size - TX_SIZE_MIN + 1)) + TX_SIZE_MIN;

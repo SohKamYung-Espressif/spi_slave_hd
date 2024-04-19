@@ -59,11 +59,19 @@
 //Value in these 4 registers indicates number of the RX buffer that Slave has loaded to the DMA
 #define SLAVE_RX_READY_BUF_NUM_REG      16
 
+/* For testing: Value in these 4 registers indicates initial number of
+ * the RX buffer that Slave is starting with, for tx overflow
+ * calculation verification
+ */
+#define SLAVE_TX_INIT_BUF_SIZE_REG      20
+
 static const char TAG[] = "SEG_SLAVE";
 
 /* Used for Master-Slave synchronization */
-static uint32_t s_tx_ready_buf_size;  //See ``cb_set_tx_ready_buf_size()``
-static uint32_t s_rx_ready_buf_num;   //See ``cb_set_rx_ready_buf_num()``
+static uint32_t s_tx_ready_buf_size = 0; //See ``cb_set_tx_ready_buf_size()``
+// to test overflow tx overflow calculation on master size
+// static uint32_t s_tx_ready_buf_size = 0xFFFF0000;  //See ``cb_set_tx_ready_buf_size()``
+static uint32_t s_rx_ready_buf_num  = 0; //See ``cb_set_rx_ready_buf_num()``
 
 static uint32_t s_tx_data_id;
 
@@ -310,7 +318,6 @@ void receiver(void *arg)
         //Start new transaction
         ESP_ERROR_CHECK(spi_slave_hd_queue_trans(SLAVE_HOST, SPI_SLAVE_CHAN_RX, &slave_trans[descriptor_id], portMAX_DELAY));
         descriptor_id = (descriptor_id + 1) % QUEUE_SIZE;   //descriptor_id will be: 0, 1, 2, ..., QUEUE_SIZE, 0, 1, ....
-        ESP_LOGW(TAG, "descriptor_id %ld", descriptor_id);
     }
 }
 
@@ -327,6 +334,9 @@ void app_main(void)
 
     static uint32_t recv_buf_size = 120;
     spi_slave_hd_write_buffer(SLAVE_HOST, SLAVE_MAX_RX_BUF_LEN_REG, (uint8_t *)&recv_buf_size, sizeof(recv_buf_size));
+
+    // set initial tx buffer size
+    spi_slave_hd_write_buffer(SLAVE_HOST, SLAVE_TX_INIT_BUF_SIZE_REG, (uint8_t *)&s_tx_ready_buf_size, sizeof(s_tx_ready_buf_size));
 
     uint32_t slave_ready_flag = SLAVE_READY_FLAG;
     spi_slave_hd_write_buffer(SLAVE_HOST, SLAVE_READY_FLAG_REG, (uint8_t *)&slave_ready_flag, sizeof(slave_ready_flag));
