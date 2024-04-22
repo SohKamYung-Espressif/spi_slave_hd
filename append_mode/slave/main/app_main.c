@@ -18,9 +18,10 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////// Please update the following configuration according to your Hardware spec /////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define GPIO_MOSI           11
-#define GPIO_MISO           13
-#define GPIO_SCLK           12
+// for ESP32-C6
+#define GPIO_MOSI           7
+#define GPIO_MISO           2
+#define GPIO_SCLK           6
 #define GPIO_CS             10
 
 #define HOST_ID             SPI2_HOST
